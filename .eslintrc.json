@@ -1,0 +1,72 @@
+{
+  "parser": "@typescript-eslint/parser",
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "plugins": ["unused-imports", "simple-import-sort"],
+  "env": {
+    "node": true,
+     "jest": true
+  },
+  "settings": {
+    "import/parsers": {
+      "@typescript-eslint/parser": [".ts", ".tsx"]
+    },
+    "import/resolver": {
+      "typescript": {
+        "alwaysTryTypes": true,
+        "project": "./tsconfig.json"
+      }
+    }
+  },
+  "rules": {
+    "unused-imports/no-unused-imports": "error",
+    "no-restricted-imports": ["error", { "patterns": ["../*/*"] }],
+    "semi": "error",
+    "no-undef": "error",
+    "@typescript-eslint/explicit-function-return-type": "error",
+    "simple-import-sort/imports": "error"
+  },
+    "overrides": [
+    {
+      "files": ["*.test.ts"],
+      "rules": {
+        "@typescript-eslint/no-var-requires": "off"
+      }
+    },
+     {
+      "files": ["**/*.js", "**/*.ts", "**/*.tsx"],
+      "rules": {
+        "simple-import-sort/imports": [
+          "error",
+          {
+            "groups": [
+              // `react` first, `next` second, then packages starting with a character
+              ["^react$", "^next", "^[a-z]"],
+              // Packages starting with `@`
+              ["^@"],
+              // Packages starting with `~`
+              ["^~"],
+              // Imports starting with `../`
+              ["^\\.\\.(?!/?$)", "^\\.\\./?$"],
+              // Imports starting with `./`
+              ["^\\./(?=.*/)(?!/?$)", "^\\.(?!/?$)", "^\\./?$"],
+              // Relative imports
+              ["^.+\\.s?css$"],
+              // Side effect imports
+              ["^\\u0000"]
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/",
+    "out/",
+    "coverage/",
+    "dist/",
+    "public/"
+  ]
+}

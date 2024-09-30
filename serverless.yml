@@ -1,0 +1,36 @@
+useDotenv: true
+
+service: punta-scraper
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-southeast-2
+
+custom:
+  domain:
+    dev: dev-scraper.punta.ai
+    prod: scraper.punta.ai
+  customDomain:
+    domainName: ${self:custom.domain.${opt:stage}}
+    basePath: ''
+    stage: ${opt:stage}
+    createRoute53Record: true
+    certificateName: '*.youxpowered.com.au'
+
+functions:
+  api:
+    handler: handler.handler
+    events:
+      - http:
+          path: /{proxy+}
+          method: any
+          cors: true
+    timeout: 30
+
+plugins:
+  - serverless-offline
+  - serverless-dotenv-plugin
+  - serverless-plugin-typescript
+  - serverless-domain-manager
