@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response } from 'express';
-import { ADDRESS_LOOKUP_STRING } from 'src/core/v1Router';
 import { createNewLog } from 'src/features/log/logService';
 import { Log } from 'src/features/log/logType';
 
@@ -23,8 +22,6 @@ export function logMiddleware(req: Request, res: Response, next: NextFunction): 
             // Log the audit timer
             const auditTimer = Date.now() - res.locals.auditTimer;
 
-            const isLogSentToDIQ = !(req.url.includes(ADDRESS_LOOKUP_STRING));
-
             // Log the response details
             const log: Log = {
                 authorisation: res.locals.apiKey,
@@ -35,8 +32,6 @@ export function logMiddleware(req: Request, res: Response, next: NextFunction): 
                 endpoint: req.originalUrl,
                 ipAddress: res.locals.ipAddress,
                 partnerId: res.locals.partnerId,
-                isLogSentToDIQ,
-                billingData: req.body.billingData,
             };
 
             void createNewLog(log); // Create a new log entry
