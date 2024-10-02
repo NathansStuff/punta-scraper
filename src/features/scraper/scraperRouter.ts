@@ -8,6 +8,6 @@ const scraperRouter = express.Router();
 
 const logAction = EActionAccess.LOGS;
 
-scraperRouter.route('/').get(protectedAccessMiddleware(logAction, getScraperHandler));
+scraperRouter.route('/').post(protectedAccessMiddleware(logAction, getScraperHandler));
 
 export { scraperRouter };

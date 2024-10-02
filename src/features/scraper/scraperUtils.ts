@@ -306,3 +306,40 @@ export async function getPedigreeInfo(page: Page): Promise<
 
     return mappedPedigree;
 }
+
+export function sanitizeDate(dateString: string | undefined): Date | undefined {
+    if (!dateString) {
+        return undefined;
+    }
+
+    const dateParts = dateString.split('/');
+
+    let day = parseInt(dateParts[0], 10);
+    let month = parseInt(dateParts[1], 10);
+    const year = parseInt(dateParts[2], 10);
+
+    // If day or month are invalid (like 00), default them to 1
+    if (isNaN(day) || day === 0) {
+        day = 1;
+    }
+    if (isNaN(month) || month === 0) {
+        month = 1;
+    }
+
+    // If year is invalid, return undefined
+    if (isNaN(year)) {
+        return undefined;
+    }
+
+    // Create the date using UTC to avoid time zone offset issues
+    return new Date(Date.UTC(year, month - 1, day));
+}
+
+export async function checkForServerError(page: Page): Promise<boolean> {
+    const isError = await page.evaluate(() => {
+        const h1Element = document.querySelector('h1');
+        return h1Element && h1Element.innerText.includes('Server Error');
+    });
+
+    return isError || false;
+}
