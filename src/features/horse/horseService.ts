@@ -37,3 +37,21 @@ export async function deleteHorseService(id: string): Promise<void> {
 export async function getHorseByStudbookIdService(id: number): Promise<HorseWithId | null> {
     return await getHorseByStudbookId(id);
 }
+
+// Function to format the date as yyyy-mm-dd
+function getFormattedDate(): string {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // months are 0-based
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+// Function to sanitize the URL to use it in a filename
+function sanitizeUrl(url: string): string {
+    return url.replace(/[^a-zA-Z0-9]/g, '_'); // Replace non-alphanumeric characters with underscores
+}
+
+export function generateFilename(url: string): string {
+    return `${getFormattedDate()}_${sanitizeUrl(url)}.png`;
+}

@@ -222,6 +222,7 @@ async function findPedigreeIds(
                 },
             };
             const createdHorse = await createHorseService(newHorse);
+            console.log('Created Basic Pedigree Horse:', createdHorse.studbook?.id);
             return { id: createdHorse._id.toHexString(), name: node.name, studbookId: node.studbookId };
         })
     );
@@ -242,9 +243,6 @@ function mapPedigreeInfo(
         father?: { name: string; id: string };
         mother?: { name: string; id: string };
     }[] = [];
-
-    console.log('Pedigree Tree:', pedigreeTree[0]);
-    console.log('Pedigree IDs:', pedigreeIds[0]);
 
     pedigreeTree.forEach((tree) => {
         const horse = pedigreeIds.find((id) => id.name === tree.horse.name);

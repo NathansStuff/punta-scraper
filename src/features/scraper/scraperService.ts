@@ -1,6 +1,14 @@
 import puppeteer from 'puppeteer';
-import { createHorseService } from 'src/features/horse/horseService';
+import {
+    createHorseService,
+    generateFilename,
+    getHorseByStudbookIdService,
+    updateHorseService,
+} from 'src/features/horse/horseService';
 import { Horse } from 'src/features/horse/types/Horse';
+import { EOutcome } from 'src/features/report/EOutcome';
+import { createReportService } from 'src/features/report/reportService';
+import { Report } from 'src/features/report/reportType';
 
 import { HorseInfo } from './types/HorseInfo';
 import { loadCookies } from './utils/utils';
@@ -25,14 +33,27 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
     // Loop through the IDs sequentially
     for (let id = startId; id <= endId; id++) {
         console.log(`Scraping horse with id: ${id}`);
+        const url = `https://www.studbook.org.au/Horse.aspx?hid=${id}`;
 
         // Navigate to the target page
-        await page.goto(`https://www.studbook.org.au/Horse.aspx?hid=${id}`);
+        await page.goto(url);
+
+        await page.screenshot({ path: generateFilename(url), fullPage: true });
+        console.log('Screenshot taken and saved as example.png');
 
         // Check if the page has a server error
         const hasServerError = await checkForServerError(page);
         if (hasServerError) {
             console.log(`Server error encountered for horse ID: ${id}. Skipping...`);
+            const report: Report = {
+                event: 'Scraper',
+                message: `Server error encountered for horse ID: ${id}. Skipping...`,
+                url: `https://www.studbook.org.au/Horse.aspx?hid=${id}`,
+                outcome: EOutcome.INVALID_ID,
+                studbookId: id,
+            };
+            await createReportService(report);
+
             await delay(delayMs); // This adds the delay
             continue; // Move to the next ID
         }
@@ -42,6 +63,15 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
 
         // Save the extracted information
         await saveInfo(id, info);
+
+        const report: Report = {
+            event: 'Scraper',
+            message: `Successfully scraped horse ID: ${id}`,
+            url: `https://www.studbook.org.au/Horse.aspx?hid=${id}`,
+            outcome: EOutcome.SUCCESS,
+            studbookId: id,
+        };
+        await createReportService(report);
 
         // Use the custom delay before moving to the next page
         console.log(`Waiting for ${delayMs} milliseconds before the next request...`);
@@ -58,22 +88,47 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
         console.error('No name found');
         return;
     }
-    console.log('saving horse:', info);
+    const existingHorse = await getHorseByStudbookIdService(id);
 
-    const horse: Horse = {
-        name: info.name,
-        lifeNumber: info.lifeNumber,
-        dateOfBirth: sanitizeDate(info.dateOfBirth),
-        microchipNumber: info.microchipNumber,
-        dnaTyped: info.dnaTyped,
-        austId: info.austId,
-        studbook: {
+    if (!existingHorse) {
+        // Create new horse
+        const horse: Horse = {
+            name: info.name,
+            lifeNumber: info.lifeNumber,
+            dateOfBirth: sanitizeDate(info.dateOfBirth),
+            microchipNumber: info.microchipNumber,
+            dnaTyped: info.dnaTyped,
+            austId: info.austId,
+            studbook: {
+                id,
+                firstScraped: new Date(),
+                lastScraped: new Date(),
+            },
+            pedigreeInfo: info.pedigreeTree,
+        };
+        await createHorseService(horse);
+        console.log('Saved Horse:', id);
+        return;
+    }
+
+    // Update existing horse
+    existingHorse.name = info.name;
+    existingHorse.lifeNumber = info.lifeNumber;
+    existingHorse.dateOfBirth = sanitizeDate(info.dateOfBirth);
+    existingHorse.microchipNumber = info.microchipNumber;
+    existingHorse.dnaTyped = info.dnaTyped;
+    existingHorse.austId = info.austId;
+    if (existingHorse.studbook) {
+        existingHorse.studbook.lastScraped = new Date();
+    } else {
+        existingHorse.studbook = {
             id,
             firstScraped: new Date(),
             lastScraped: new Date(),
-        },
-        pedigreeInfo: info.pedigreeTree,
-    };
-    const savedHorse = await createHorseService(horse);
-    console.log('Saved Horse:', savedHorse);
+        };
+    }
+    existingHorse.pedigreeInfo = info.pedigreeTree;
+
+    await updateHorseService(existingHorse._id.toString(), existingHorse);
+    console.log('Updated Horse: ', id);
 }
