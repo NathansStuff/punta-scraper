@@ -1,147 +1,57 @@
-import fs from 'fs';
-import path from 'path';
 import puppeteer, { Page } from 'puppeteer';
 
-// File to save cookies
-const cookiesFilePath = path.join(__dirname, 'cookies.json');
-// File to save the raw HTML
-const htmlFilePath = path.join(__dirname, 'rawPage.html');
+import { loadCookies, saveCookies, saveRawHTML } from './utils/utils';
 
-// Function to save cookies
-async function saveCookies(page: Page) {
-    const cookies = await page.cookies();
-    fs.writeFileSync(cookiesFilePath, JSON.stringify(cookies, null, 2));
-    console.log('Cookies saved.');
-}
+async function login(page: Page): Promise<void> {
+    // Navigate to the login page
+    await page.goto('https://www.studbook.org.au/Default.aspx');
 
-// Function to load cookies
-async function loadCookies(page: Page) {
-    if (fs.existsSync(cookiesFilePath)) {
-        const cookies = JSON.parse(fs.readFileSync(cookiesFilePath, 'utf-8'));
-        await page.setCookie(...cookies);
-        console.log('Cookies loaded.');
-        return true; // Return true if cookies exist
-    }
-    return false; // Return false if no cookies
-}
+    // Wait for the login form to appear and perform login
+    if (await page.$('input[name="txtUserId"]')) {
+        await page.type('input[name="txtUserId"]', '763168');
+        await page.type('input[name="txtPassword"]', 'XQRLFG');
+        await page.click('input[name="btnLogin"]');
+        await page.waitForNavigation();
 
-// Function to save the raw HTML of the page
-async function saveRawHTML(page: Page) {
-    const rawHTML = await page.content(); // Get the raw HTML of the page
-    fs.writeFileSync(htmlFilePath, rawHTML);
-    console.log(`Raw HTML saved to ${htmlFilePath}`);
-}
-
-export async function scraperService() {
-    const browser = await puppeteer.launch({ headless: false });
-    const page = await browser.newPage();
-
-    // Try to load cookies; if cookies exist, go straight to the horse page
-    const cookiesLoaded = await loadCookies(page);
-
-    if (!cookiesLoaded) {
-        // No cookies; go to the login page
-        console.log('No cookies found. Navigating to login page...');
-        await page.goto('https://www.studbook.org.au/Default.aspx');
-
-        // Wait for the login form to appear and log in
-        if (await page.$('input[name="txtUserId"]')) {
-            console.log('Logging in...');
-            await page.type('input[name="txtUserId"]', '763168');
-            await page.type('input[name="txtPassword"]', 'XQRLFG');
-            await page.click('input[name="btnLogin"]');
-            await page.waitForNavigation();
-
-            // Save cookies after logging in
-            await saveCookies(page);
-        }
+        // Save cookies after logging in
+        await saveCookies(page);
     } else {
-        console.log('Cookies found. Skipping login and going straight to horse page...');
+        console.error('Login form not found');
     }
+}
 
-    // Navigate to the target page
-    await page.goto('https://www.studbook.org.au/horse.aspx?hid=1025161&pagetype=PEDIGREE');
+interface PedigreeItem {
+    text: string;
+    link: string;
+    index: number;
+}
 
-    // Save the raw HTML for later analysis
-    await saveRawHTML(page);
+export async function extractPedigreeInfo(page: Page): Promise<PedigreeItem[]> {
+    console.log('Extracting Pedigree Info...');
 
-    // Extract pedigree information
-    const extractPedigreeInfo = async (page: Page) => {
-        console.log('Extracting Pedigree Info...');
+    // Use page.evaluate to run this code in the browser context
+    const extractedItems: PedigreeItem[] = await page.evaluate(() => {
+        const items: PedigreeItem[] = [];
 
-        const response = await page.evaluate(() => {
-            const pedigree = {};
-            const debugInfo = [];
-            const extractedItems: any[] = [];
+        // Get all elements with the class 'PedigreeItem'
+        const pedigreeItems = document.querySelectorAll<HTMLAnchorElement>('a.PedigreeItem');
 
-            // Get all PedigreeItem elements
-            const pedigreeItems = document.querySelectorAll('a.PedigreeItem');
-            debugInfo.push(`Found ${pedigreeItems.length} Pedigree Items`);
-            debugInfo.push(`Item 0: ${pedigreeItems[0].textContent}`);
-
-            // Log every pedigree item text and link for debugging
-            pedigreeItems.forEach((pedigreeItem: any, i) => {
-                debugInfo.push(`${i} -${pedigreeItem.textContent} - ${pedigreeItem.href}`);
+        // Extract the text, href, and index for each item
+        pedigreeItems.forEach((pedigreeItem, i) => {
+            items.push({
+                text: pedigreeItem.innerText, // Extract the inner text
+                link: pedigreeItem.href, // Extract the href (link)
+                index: i, // Index of the item
             });
-
-            function mapIndex(i: number) {
-                switch (i) {
-                    case 0:
-                        return 'fathers father';
-                    case 1:
-                        return 'fathers father father';
-                    case 2:
-                        return 'fathers father mother';
-                    case 3:
-                        return 'father';
-                    case 4:
-                        return 'fathers mother';
-                    case 5:
-                        return 'fathers mother father';
-                    case 6:
-                        return 'fathers mother mother';
-                    case 7:
-                        return 'currentHorse';
-                    case 8:
-                        return 'mother';
-                    case 9:
-                        return 'mothers father';
-                    case 10:
-                        return 'mothers father father';
-                    case 11:
-                        return 'mothers father mother';
-                    case 12:
-                        return 'mothers mother';
-                    case 13:
-                        return 'mothers mother father';
-                    case 14:
-                        return 'mothers mother mother';
-
-                    default:
-                        return 'unknown';
-                }
-            }
-
-            // Extract all pedigree items
-            pedigreeItems.forEach((pedigreeItem, i) => {
-                extractedItems.push({
-                    text: (pedigreeItem as HTMLAnchorElement).innerText,
-                    link: (pedigreeItem as HTMLAnchorElement).href,
-                    relationship: mapIndex(i),
-                    index: i,
-                });
-            });
-
-            return extractedItems; // Return debug and extracted info
         });
 
-        return response;
-    };
+        return items; // Return the extracted information
+    });
+    return extractedItems;
+}
 
-    const pedigreeInfo = await extractPedigreeInfo(page);
-    console.log('Pedigree Info:', pedigreeInfo);
-
-    const horseInfo = await page.evaluate(() => {
+async function horseInfo(page: Page): Promise<any> {
+    const items = await page.evaluate(() => {
         const info: any = {};
 
         // Get all `td` elements
@@ -174,8 +84,38 @@ export async function scraperService() {
         return info;
     });
 
+    return items;
+}
+
+export async function scraperService(): Promise<void> {
+    const browser = await puppeteer.launch({ headless: false });
+    const page = await browser.newPage();
+
+    // Try to load cookies; if cookies exist, go straight to the horse page
+    const cookiesLoaded = await loadCookies(page);
+
+    if (!cookiesLoaded) {
+        // No cookies; go to the login page
+        await login(page);
+    } else {
+        console.log('Cookies found. Skipping login and going straight to horse page...');
+    }
+
+    // Navigate to the target page
+    await page.goto('https://www.studbook.org.au/horse.aspx?hid=1025161');
+
+    // Save the raw HTML for later analysis
+    await saveRawHTML(page);
+
+    // Extract pedigree information
+    const pedigreeInfo = await extractPedigreeInfo(page);
+    const pedigreeTree = mapPedigreeTree(pedigreeInfo);
+    console.log('Pedigree Tree:', pedigreeTree);
+    console.log(pedigreeTree.length);
+
     // Log the extracted information
-    console.log('Extracted Horse Info:', horseInfo);
+    const info = await horseInfo(page);
+    console.log('Extracted Horse Info:', info);
 
     const horseName = await page.evaluate(() => {
         const element = document.querySelector('td.HeaderBlockNasuy') as HTMLElement;
@@ -185,4 +125,107 @@ export async function scraperService() {
     console.log('Horse Name:', horseName);
 
     await browser.close();
+}
+
+function mapPedigreeTree(pedigreeItems: PedigreeItem[]) {
+    return [
+        {
+            horse: {
+                name: pedigreeItems[0].text,
+                link: pedigreeItems[0].link,
+            },
+            father: {
+                name: pedigreeItems[1].text,
+                link: pedigreeItems[1].link,
+            },
+            mother: {
+                name: pedigreeItems[2].text,
+                link: pedigreeItems[2].link,
+            },
+        },
+        {
+            horse: {
+                name: pedigreeItems[3].text,
+                link: pedigreeItems[3].link,
+            },
+            father: {
+                name: pedigreeItems[0].text,
+                link: pedigreeItems[0].link,
+            },
+            mother: {
+                name: pedigreeItems[4].text,
+                link: pedigreeItems[4].link,
+            },
+        },
+        {
+            horse: {
+                name: pedigreeItems[4].text,
+                link: pedigreeItems[4].link,
+            },
+            father: {
+                name: pedigreeItems[5].text,
+                link: pedigreeItems[5].link,
+            },
+            mother: {
+                name: pedigreeItems[6].text,
+                link: pedigreeItems[6].link,
+            },
+        },
+        {
+            horse: {
+                name: pedigreeItems[7].text,
+                link: pedigreeItems[7].link,
+            },
+            father: {
+                name: pedigreeItems[3].text,
+                link: pedigreeItems[3].link,
+            },
+            mother: {
+                name: pedigreeItems[11].text,
+                link: pedigreeItems[11].link,
+            },
+        },
+        {
+            horse: {
+                name: pedigreeItems[11].text,
+                link: pedigreeItems[11].link,
+            },
+            father: {
+                name: pedigreeItems[8].text,
+                link: pedigreeItems[8].link,
+            },
+            mother: {
+                name: pedigreeItems[12].text,
+                link: pedigreeItems[12].link,
+            },
+        },
+        {
+            horse: {
+                name: pedigreeItems[8].text,
+                link: pedigreeItems[8].link,
+            },
+            father: {
+                name: pedigreeItems[9].text,
+                link: pedigreeItems[9].link,
+            },
+            mother: {
+                name: pedigreeItems[10].text,
+                link: pedigreeItems[10].link,
+            },
+        },
+        {
+            horse: {
+                name: pedigreeItems[12].text,
+                link: pedigreeItems[12].link,
+            },
+            father: {
+                name: pedigreeItems[13].text,
+                link: pedigreeItems[13].link,
+            },
+            mother: {
+                name: pedigreeItems[14].text,
+                link: pedigreeItems[14].link,
+            },
+        },
+    ];
 }
