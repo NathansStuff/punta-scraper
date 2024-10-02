@@ -3,7 +3,7 @@ import { MONGO_URI } from 'src/constants/constants';
 
 let cachedConn: Mongoose | null = null;
 
-export async function mongoDBConnect(): Promise<Mongoose> {
+export async function connectMongo(): Promise<Mongoose> {
     if (cachedConn) {
         return cachedConn;
     }
