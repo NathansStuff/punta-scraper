@@ -4,6 +4,8 @@ export interface HorseInfo {
     microchipNumber?: string;
     dnaTyped?: string;
     name?: string;
+    gender?: 'mare' | 'stallion';
+    color?: string;
     austId?: string;
     pedigreeTree?: {
         horse?: {
@@ -19,4 +21,7 @@ export interface HorseInfo {
             id: string;
         };
     }[];
+    family?: string;
+    taprootHid?: string;
+    foalRef?: string;
 }

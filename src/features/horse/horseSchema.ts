@@ -62,6 +62,14 @@ export const HorseSchema = new Schema<Horse>(
                 },
             },
         ],
+        family: { type: String },
+        taproot: {
+            type: {
+                name: { type: String },
+                id: { type: String },
+            },
+        },
+        foalRef: { type: String },
     },
     { timestamps: true }
 );

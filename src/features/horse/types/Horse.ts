@@ -81,6 +81,12 @@ export const Horse = z.object({
                 .optional()
         )
         .optional(),
+    family: z.string().optional(),
+    taproot: z.object({
+        id: z.string().optional(),
+        name: z.string().optional(),
+    }).optional(),
+    foalRef: z.string().optional(),
 });
 
 export const HorsePartial = Horse.partial();

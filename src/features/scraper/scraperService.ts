@@ -10,9 +10,10 @@ import { EOutcome } from 'src/features/report/EOutcome';
 import { createReportService } from 'src/features/report/reportService';
 import { Report } from 'src/features/report/reportType';
 
-import { HorseInfo } from './types/HorseInfo';
-import { loadCookies } from './utils/utils';
+import { ESex } from '../horse/types/ESex';
 import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUtils';
+import { HorseInfo } from './types/HorseInfo';
+import { loadCookies, saveRawHTML } from './utils/utils';
 
 const delay = (ms: number): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -59,7 +60,9 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
         }
 
         // Extract pedigree information
-        const info = await horseInfo(page);
+        const info = await horseInfo(page, id.toString());
+
+        saveRawHTML(page);
 
         // Save the extracted information
         await saveInfo(id, info);
@@ -89,6 +92,13 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
         return;
     }
     const existingHorse = await getHorseByStudbookIdService(id);
+    let gender: ESex | undefined;
+    if (info.gender === 'mare') {
+        gender = ESex.FEMALE;
+    } else if (info.gender === 'stallion') {
+        gender = ESex.MALE;
+    }
+    console.log(info, 'info ***');
 
     if (!existingHorse) {
         // Create new horse
@@ -105,6 +115,10 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
                 lastScraped: new Date(),
             },
             pedigreeInfo: info.pedigreeTree,
+            sex: gender,
+            color: info.color,
+            family: info.family,
+            foalRef: info.foalRef,
         };
         await createHorseService(horse);
         console.log('Saved Horse:', id);
@@ -117,6 +131,9 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
     existingHorse.dateOfBirth = sanitizeDate(info.dateOfBirth);
     existingHorse.microchipNumber = info.microchipNumber;
     existingHorse.dnaTyped = info.dnaTyped;
+    existingHorse.sex = gender;
+    existingHorse.foalRef = info.foalRef;
+    existingHorse.color = info.color;
     existingHorse.austId = info.austId;
     if (existingHorse.studbook) {
         existingHorse.studbook.lastScraped = new Date();
@@ -128,6 +145,7 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
         };
     }
     existingHorse.pedigreeInfo = info.pedigreeTree;
+    existingHorse.family = info.family;
 
     await updateHorseService(existingHorse._id.toString(), existingHorse);
     console.log('Updated Horse: ', id);

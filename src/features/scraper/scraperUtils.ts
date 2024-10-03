@@ -158,8 +158,8 @@ async function extractPedigreeInfo(page: Page): Promise<PedigreeItem[]> {
     return extractedItems;
 }
 
-export async function horseInfo(page: Page): Promise<HorseInfo> {
-    const items = await page.evaluate(() => {
+export async function horseInfo(page: Page, targetHid: string): Promise<HorseInfo> {
+    const items = await page.evaluate((hidToMatch) => {
         const info: HorseInfo = {};
 
         const element = document.querySelector('td.HeaderBlockNasuy') as HTMLElement;
@@ -193,13 +193,63 @@ export async function horseInfo(page: Page): Promise<HorseInfo> {
             }
 
             // Find 'aust id'
-            if (text.includes('aust id:')) {
-                info.austId = text.replace('aust id:', '').trim();
+            if (text.includes('aust.id.:')) {
+                info.austId = text.replace('aust.id.:', '').trim();
+            }
+
+            // Find mare
+            if (text.includes('mare')) {
+                const color = text.split('mare')[0].trim();
+                info.gender = 'mare';
+                info.color = color;
+            }
+
+            // Find stallion
+            if (text.includes('stallion')) {
+                const color = text.split('stallion')[0].trim();
+                info.gender = 'stallion';
+                info.color = color;
             }
         });
 
+        // Extract the family
+        const familyElement = Array.from(tdElements).find((td) => td.innerText.includes('Family:'));
+        if (familyElement) {
+            const familyText = familyElement.querySelector('b');
+            info.family = familyText ? familyText.innerText.trim() : undefined;
+        }
+
+        // Extract the taproot hid
+        const taprootElement = Array.from(tdElements).find((td) => td.innerText.includes('Taproot:'));
+        if (taprootElement) {
+            const taprootLink = taprootElement.querySelector('a.subscribelink') as HTMLAnchorElement;
+            if (taprootLink) {
+                const taprootHref = taprootLink.getAttribute('href');
+                const taprootHidMatch = taprootHref?.match(/hid=(\d+)/);
+                if (taprootHidMatch) {
+                    info.taprootHid = taprootHidMatch[1];
+                }
+            }
+        }
+
+        // Find the matching `a` element with the provided `hid`
+        const matchingHorseLink = document.querySelector(`a[href*="hid=${hidToMatch}"]`) as HTMLAnchorElement;
+        if (matchingHorseLink) {
+            // Find the nearest parent `td` and then look for the `Foal ref:` text inside its siblings
+            const parentTd = matchingHorseLink.closest('td');
+            if (parentTd) {
+                const foalRefElement = parentTd.parentElement?.nextElementSibling?.querySelector(
+                    'td.PedigreeFoalRef'
+                ) as HTMLAnchorElement | null;
+                if (foalRefElement && foalRefElement.innerText.includes('Foal ref:')) {
+                    const foalRefText = foalRefElement.innerText.trim();
+                    info.foalRef = foalRefText.replace('Foal ref:', '').trim();
+                }
+            }
+        }
+
         return info;
-    });
+    }, targetHid);
 
     const pedigreeItems = await getPedigreeInfo(page);
     return { ...items, pedigreeTree: pedigreeItems };
