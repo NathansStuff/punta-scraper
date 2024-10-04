@@ -47,11 +47,7 @@ function getFormattedDate(): string {
     return `${year}-${month}-${day}`;
 }
 
-// Function to sanitize the URL to use it in a filename
-function sanitizeUrl(url: string): string {
-    return url.replace(/[^a-zA-Z0-9]/g, '_'); // Replace non-alphanumeric characters with underscores
-}
-
 export function generateFilename(url: string): string {
-    return `${getFormattedDate()}_${sanitizeUrl(url)}.png`;
+    const hid = url.split('?hid=').pop();
+    return `${hid}_${getFormattedDate()}.png`;
 }

@@ -1,3 +1,4 @@
+import path from 'path';
 import puppeteer from 'puppeteer';
 import {
     createHorseService,
@@ -14,6 +15,7 @@ import { ELivingStatus } from 'src/types/ELivingStatus';
 
 import { HorseInfo } from './types/HorseInfo';
 import { saveRawHTML } from './utils/utils';
+import { deleteLocalFile, uploadToS3 } from './s3';
 import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUtils';
 
 const delay = (ms: number): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,8 +33,20 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
         // Navigate to the target page
         await page.goto(url);
 
-        await page.screenshot({ path: generateFilename(url), fullPage: true });
-        console.log('Screenshot taken and saved as example.png');
+        // Generate the filename for the screenshot
+        const screenshotPath = generateFilename(url);
+        console.log('Generating screenshot:', screenshotPath);
+
+        // Take a screenshot
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log('Screenshot taken:', screenshotPath);
+
+        // Upload the screenshot to S3
+        const s3Key = `screenshots/${path.basename(screenshotPath)}`; // Define S3 key (path in bucket)
+        await uploadToS3(screenshotPath, s3Key);
+
+        // Delete the screenshot locally after upload
+        deleteLocalFile(screenshotPath);
 
         // Check if the page has a server error
         const hasServerError = await checkForServerError(page);
