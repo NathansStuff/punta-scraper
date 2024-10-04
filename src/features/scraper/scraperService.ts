@@ -21,7 +21,16 @@ import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUt
 const delay = (ms: number): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function scraperService(startId: number, endId: number, delayMs: number = 2000): Promise<void> {
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch({
+        headless: false,
+        defaultViewport: {
+            width: 800, // Set your desired width
+            height: 600, // Set your desired height
+        },
+        args: [
+            '--window-size=800,600', // Set the window size for the browser
+        ],
+    });
     const page = await browser.newPage();
     await login(page);
 
