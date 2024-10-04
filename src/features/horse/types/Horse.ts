@@ -87,6 +87,8 @@ export const Horse = z.object({
         name: z.string().optional(),
     }).optional(),
     foalRef: z.string().optional(),
+    bredBy: z.string().optional(),
+    deceasedDate: z.date().optional(),
 });
 
 export const HorsePartial = Horse.partial();

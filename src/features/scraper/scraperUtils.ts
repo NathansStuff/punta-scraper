@@ -1,10 +1,11 @@
+/* eslint-disable no-inner-declarations */
 import { Page } from 'puppeteer';
 import { createHorseService, getHorseByStudbookIdService } from 'src/features/horse/horseService';
 import { Horse } from 'src/features/horse/types/Horse';
 
 import { HorseInfo } from './types/HorseInfo';
 import { PedigreeTree } from './types/PedigreeInfo';
-import { saveCookies } from './utils/utils';
+import { loadCookies, saveCookies } from './utils/utils';
 
 export async function mapPedigreeTree(page: Page): Promise<PedigreeTree[]> {
     const pedigreeItems = await extractPedigreeInfo(page);
@@ -111,20 +112,25 @@ export async function mapPedigreeTree(page: Page): Promise<PedigreeTree[]> {
 }
 
 export async function login(page: Page): Promise<void> {
+    await loadCookies(page);
+
     // Navigate to the login page
     await page.goto('https://www.studbook.org.au/Default.aspx');
+    try {
+        // Wait for the login form to appear and perform login
+        if (await page.$('input[name="txtUserId"]')) {
+            await page.type('input[name="txtUserId"]', '763168');
+            await page.type('input[name="txtPassword"]', 'XQRLFG');
+            await page.click('input[name="btnLogin"]');
+            await page.waitForNavigation();
 
-    // Wait for the login form to appear and perform login
-    if (await page.$('input[name="txtUserId"]')) {
-        await page.type('input[name="txtUserId"]', '763168');
-        await page.type('input[name="txtPassword"]', 'XQRLFG');
-        await page.click('input[name="btnLogin"]');
-        await page.waitForNavigation();
-
-        // Save cookies after logging in
-        await saveCookies(page);
-    } else {
-        console.error('Login form not found');
+            // Save cookies after logging in
+            await saveCookies(page);
+        } else {
+            console.error('Login form not found');
+        }
+    } catch (e) {
+        console.error('Error logging in:', e);
     }
 }
 
@@ -159,8 +165,8 @@ async function extractPedigreeInfo(page: Page): Promise<PedigreeItem[]> {
 }
 
 export async function horseInfo(page: Page, targetHid: string): Promise<HorseInfo> {
-    const items = await page.evaluate((hidToMatch) => {
-        const info: HorseInfo = {};
+    const items = await page.evaluate(() => {
+        const info: HorseInfo = { logs: [] };
 
         const element = document.querySelector('td.HeaderBlockNasuy') as HTMLElement;
         const horseName = element ? element.innerText.trim() : undefined;
@@ -199,16 +205,43 @@ export async function horseInfo(page: Page, targetHid: string): Promise<HorseInf
 
             // Find mare
             if (text.includes('mare')) {
-                const color = text.split('mare')[0].trim();
+                let color: string | undefined = text.split('mare')[0].trim();
+                if (text.split('stallion')[1] === undefined) {
+                    color = undefined;
+                }
                 info.gender = 'mare';
                 info.color = color;
             }
 
             // Find stallion
             if (text.includes('stallion')) {
-                const color = text.split('stallion')[0].trim();
+                let color: string | undefined = text.split('stallion')[0].trim();
+                if (text.split('stallion')[1] === undefined) {
+                    color = undefined;
+                }
                 info.gender = 'stallion';
                 info.color = color;
+            }
+
+            // Find stallion
+            if (text.includes('gelding')) {
+                let color: string | undefined = text.split('gelding')[0].trim();
+                if (text.split('stallion')[1] === undefined) {
+                    color = undefined;
+                }
+                info.gender = 'stallion';
+                info.color = color;
+            }
+
+            // Find bred by
+            if (text.includes('bred by ')) {
+                info.bredBy = td.innerText.replace('bred by ', '').trim(); // Note: Not text.replace to keep uppercase names
+            }
+
+            // Find deceased
+            if (text.includes('deceased ')) {
+                const dateStr = text.replace('deceased ', '').trim().replace('(', '').replace(')', '').trim();
+                info.deceased = dateStr;
             }
         });
 
@@ -227,32 +260,61 @@ export async function horseInfo(page: Page, targetHid: string): Promise<HorseInf
                 const taprootHref = taprootLink.getAttribute('href');
                 const taprootHidMatch = taprootHref?.match(/hid=(\d+)/);
                 if (taprootHidMatch) {
-                    info.taprootHid = taprootHidMatch[1];
+                    info.taproot = {
+                        name: taprootLink.innerText.trim(),
+                        link: taprootHref ?? '',
+                        studbookId: parseInt(taprootHidMatch[1], 10),
+                    };
                 }
             }
         }
 
-        // Find the matching `a` element with the provided `hid`
-        const matchingHorseLink = document.querySelector(`a[href*="hid=${hidToMatch}"]`) as HTMLAnchorElement;
-        if (matchingHorseLink) {
-            // Find the nearest parent `td` and then look for the `Foal ref:` text inside its siblings
-            const parentTd = matchingHorseLink.closest('td');
-            if (parentTd) {
-                const foalRefElement = parentTd.parentElement?.nextElementSibling?.querySelector(
-                    'td.PedigreeFoalRef'
-                ) as HTMLAnchorElement | null;
-                if (foalRefElement && foalRefElement.innerText.includes('Foal ref:')) {
-                    const foalRefText = foalRefElement.innerText.trim();
-                    info.foalRef = foalRefText.replace('Foal ref:', '').trim();
-                }
-            }
+        const foalRefElements = Array.from(tdElements).find((td) => td.innerText.includes('Foal ref: '));
+        if (foalRefElements) {
+            const text = 'Foal ref: ' + foalRefElements.innerText.trim();
+            info.logs.push(text);
         }
-
         return info;
     }, targetHid);
 
     const pedigreeItems = await getPedigreeInfo(page);
+    if (items.taproot) {
+        const taproot = await findPedigreeIds([items.taproot]);
+        items.taprootInfo = taproot[0];
+    }
+    const foalRef = findFoalRefFromText(items.logs[0], items.name ?? '');
+    items.foalRef = foalRef;
+
     return { ...items, pedigreeTree: pedigreeItems };
+}
+function findFoalRefFromText(text: string, horse: string): string | undefined {
+    try {
+        console.log('text:', text);
+        if (text === undefined) {
+            return undefined;
+        }
+        console.log('horse:', horse);
+        // Step 1: Remove newlines and trim extra spaces
+        const cleanedText = text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+        console.log('Cleaned text:', cleanedText);
+
+        // Step 2: Match the horse's foal ref
+        const match = cleanedText.split(horse)[1]?.trim();
+        console.log('Match:', match); // Log the regex match result for debugging
+
+        // Step 3: Extract the foal ref from the match
+        const match2 = match.split('Foal ref: ')[1]?.trim();
+        console.log('Match2:', match2); // Log the regex match result for debugging
+
+        // Step 4: Return the foal ref
+        const match3 = match2.split(' ')[0]?.trim();
+        console.log('Match3:', match3); // Log the regex match result for debugging
+        return match3; // Return the foal ref
+    } catch (
+        e // Log any errors
+    ) {
+        console.error('Error extracting foal ref:', e);
+    }
 }
 
 async function findPedigreeIds(

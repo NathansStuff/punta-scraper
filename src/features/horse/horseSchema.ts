@@ -70,6 +70,8 @@ export const HorseSchema = new Schema<Horse>(
             },
         },
         foalRef: { type: String },
+        bredBy: { type: String },
+        deceasedDate: { type: Date },
     },
     { timestamps: true }
 );

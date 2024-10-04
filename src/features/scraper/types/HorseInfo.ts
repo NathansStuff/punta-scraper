@@ -22,6 +22,13 @@ export interface HorseInfo {
         };
     }[];
     family?: string;
-    taprootHid?: string;
+    taproot?: { name: string; link: string; studbookId: number }; // Their shit
     foalRef?: string;
+    taprootInfo?: {
+        name: string;
+        id: string;
+    }; // Our shit
+    logs: string[]
+    bredBy?: string
+    deceased?: string
 }

@@ -5,31 +5,23 @@ import {
     getHorseByStudbookIdService,
     updateHorseService,
 } from 'src/features/horse/horseService';
+import { ESex } from 'src/features/horse/types/ESex';
 import { Horse } from 'src/features/horse/types/Horse';
 import { EOutcome } from 'src/features/report/EOutcome';
 import { createReportService } from 'src/features/report/reportService';
 import { Report } from 'src/features/report/reportType';
+import { ELivingStatus } from 'src/types/ELivingStatus';
 
-import { ESex } from '../horse/types/ESex';
-import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUtils';
 import { HorseInfo } from './types/HorseInfo';
-import { loadCookies, saveRawHTML } from './utils/utils';
+import { saveRawHTML } from './utils/utils';
+import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUtils';
 
 const delay = (ms: number): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function scraperService(startId: number, endId: number, delayMs: number = 2000): Promise<void> {
     const browser = await puppeteer.launch({ headless: false });
     const page = await browser.newPage();
-
-    // Try to load cookies; if cookies exist, go straight to the horse page
-    const cookiesLoaded = await loadCookies(page);
-
-    if (!cookiesLoaded) {
-        // No cookies; go to the login page
-        await login(page);
-    } else {
-        console.log('Cookies found. Skipping login and going straight to horse pages...');
-    }
+    await login(page);
 
     // Loop through the IDs sequentially
     for (let id = startId; id <= endId; id++) {
@@ -98,12 +90,26 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
     } else if (info.gender === 'stallion') {
         gender = ESex.MALE;
     }
-    console.log(info, 'info ***');
+    let deceasedDate: Date | undefined;
+    if (info.deceased) {
+        try {
+            const [day, month, year] = info.deceased.split('/');
+            deceasedDate = new Date(`${year}-${month}-${day}`); // Convert to YYYY-MM-DD format
+        } catch (e) {
+            console.error('Error parsing deceased date', e);
+        }
+    }
+    let status: ELivingStatus | undefined;
+    if (deceasedDate) {
+        status = ELivingStatus.DECEASED;
+    }
 
     if (!existingHorse) {
         // Create new horse
         const horse: Horse = {
             name: info.name,
+            status,
+            deceasedDate,
             lifeNumber: info.lifeNumber,
             dateOfBirth: sanitizeDate(info.dateOfBirth),
             microchipNumber: info.microchipNumber,
@@ -119,6 +125,8 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
             color: info.color,
             family: info.family,
             foalRef: info.foalRef,
+            taproot: info.taprootInfo,
+            bredBy: info.bredBy,
         };
         await createHorseService(horse);
         console.log('Saved Horse:', id);
@@ -132,8 +140,11 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
     existingHorse.microchipNumber = info.microchipNumber;
     existingHorse.dnaTyped = info.dnaTyped;
     existingHorse.sex = gender;
+    existingHorse.deceasedDate = deceasedDate;
+    existingHorse.status = status;
     existingHorse.foalRef = info.foalRef;
     existingHorse.color = info.color;
+    existingHorse.bredBy = info.bredBy;
     existingHorse.austId = info.austId;
     if (existingHorse.studbook) {
         existingHorse.studbook.lastScraped = new Date();
@@ -146,6 +157,7 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
     }
     existingHorse.pedigreeInfo = info.pedigreeTree;
     existingHorse.family = info.family;
+    existingHorse.taproot = info.taprootInfo;
 
     await updateHorseService(existingHorse._id.toString(), existingHorse);
     console.log('Updated Horse: ', id);
