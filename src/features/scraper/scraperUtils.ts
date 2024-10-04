@@ -204,33 +204,37 @@ export async function horseInfo(page: Page, targetHid: string): Promise<HorseInf
             }
 
             // Find mare
-            if (text.includes('mare')) {
-                let color: string | undefined = text.split('mare')[0].trim();
-                if (text.split('stallion')[1] === undefined) {
-                    color = undefined;
+            try {
+                if (text.includes('mare')) {
+                    let color: string | undefined = text.split('mare')[0].trim();
+                    if (text.split('mare')[1] === undefined) {
+                        color = undefined;
+                    }
+                    info.gender = 'mare';
+                    info.color = color;
                 }
-                info.gender = 'mare';
-                info.color = color;
-            }
 
-            // Find stallion
-            if (text.includes('stallion')) {
-                let color: string | undefined = text.split('stallion')[0].trim();
-                if (text.split('stallion')[1] === undefined) {
-                    color = undefined;
+                // Find stallion
+                if (text.includes('stallion')) {
+                    let color: string | undefined = text.split('stallion')[0].trim();
+                    if (text.split('stallion')[1] === undefined) {
+                        color = undefined;
+                    }
+                    info.gender = 'stallion';
+                    info.color = color;
                 }
-                info.gender = 'stallion';
-                info.color = color;
-            }
 
-            // Find stallion
-            if (text.includes('gelding')) {
-                let color: string | undefined = text.split('gelding')[0].trim();
-                if (text.split('stallion')[1] === undefined) {
-                    color = undefined;
+                // Find stallion
+                if (text.includes('gelding')) {
+                    let color: string | undefined = text.split('gelding')[0].trim();
+                    if (text.split('gelding')[1] === undefined) {
+                        color = undefined;
+                    }
+                    info.gender = 'stallion';
+                    info.color = color;
                 }
-                info.gender = 'stallion';
-                info.color = color;
+            } catch (e) {
+                info.logs.push('Error finding stallion/mare/gelding');
             }
 
             // Find bred by
@@ -380,10 +384,13 @@ function extractUniquePedigreeNodes(
     // Step 1: Flatten all horse, father, and mother nodes into a single array
     const allNodes = pedigreeTrees.flatMap((tree) => [tree.horse, tree.father, tree.mother]);
 
-    // Step 2: Filter for unique values based on the 'link' using a Map
+    // Step 2: Filter out undefined or invalid nodes (i.e., nodes without text or link)
+    const validNodes = allNodes.filter((node) => node?.name && node?.link);
+
+    // Step 3: Filter for unique values based on the 'link' using a Map
     const uniqueNodes = Array.from(
         new Map(
-            allNodes.map((item) => {
+            validNodes.map((item) => {
                 const studbookId = parseInt(item.link.split('=')[1]); // Extract the studbookId from the link
                 return [item.link, { ...item, studbookId }];
             })
