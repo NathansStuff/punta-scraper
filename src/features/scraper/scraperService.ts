@@ -22,20 +22,26 @@ const delay = (ms: number): Promise<unknown> => new Promise((resolve) => setTime
 
 export async function scraperService(startId: number, endId: number, delayMs: number = 2000): Promise<void> {
     const browser = await puppeteer.launch({
-        headless: false,
+        headless: true,
         defaultViewport: {
             width: 800, // Set your desired width
             height: 600, // Set your desired height
         },
         args: [
             '--window-size=800,600', // Set the window size for the browser
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
         ],
     });
     const page = await browser.newPage();
     await login(page);
 
-    // Loop through the IDs sequentially
+    const totalHorses = endId - startId + 1; // Total number of horses to scrape
+    let horsesScraped = 0; // Count of horses scraped so far
+    const startTime = Date.now(); // Start time for the entire process
+
     for (let id = startId; id <= endId; id++) {
+        const horseStartTime = Date.now(); // Start time for this horse
         console.log(`Scraping horse with id: ${id}`);
         const url = `https://www.studbook.org.au/Horse.aspx?hid=${id}`;
 
@@ -69,6 +75,7 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
                 studbookId: id,
             };
             await createReportService(report);
+            horsesScraped++;
 
             await delay(delayMs); // This adds the delay
             continue; // Move to the next ID
@@ -92,11 +99,41 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
         await createReportService(report);
 
         // Use the custom delay before moving to the next page
-        console.log(`Waiting for ${delayMs} milliseconds before the next request...`);
+        console.log(`Waiting for ${delayMs} milliseconds...`);
         await delay(delayMs); // This adds the delay
+
+        const horseEndTime = Date.now(); // End time for this horse
+        const timeTaken = (horseEndTime - horseStartTime) / 1000; // Time taken in seconds
+        horsesScraped++;
+        const percentage = ((horsesScraped / totalHorses) * 100).toFixed(2); // Percentage completed
+        const elapsedTime = (horseEndTime - startTime) / 1000; // Elapsed time in seconds
+        const estimatedTotalTime = (elapsedTime / horsesScraped) * totalHorses; // Estimated total time
+        const estimatedFinishTimeInSeconds = estimatedTotalTime - elapsedTime; // Remaining time in seconds
+
+        // Calculate the estimated end date and time
+        const estimatedFinishTimestamp = new Date(horseEndTime + estimatedFinishTimeInSeconds * 1000);
+        const estimatedFinishTimeString = estimatedFinishTimestamp.toLocaleString('en-US', {
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+        });
+
+        console.log(`Time taken for horse ID ${id}: ${timeTaken} seconds`);
+        console.log(`Overall time elapsed: ${elapsedTime.toFixed(2)} seconds`);
+        console.log(`Progress: ${percentage}%`);
+        console.log(
+            `Estimated time remaining: ${(estimatedFinishTimeInSeconds / 60 / 60).toFixed(2)} hours ${(estimatedFinishTimeInSeconds / 60).toFixed(2)} minutes`
+        );
+        console.log(`Estimated finish time: ${estimatedFinishTimeString}`);
     }
 
-    console.log('Finished scraping horses');
+    // Final log after all horses have been scraped
+    const endTime = Date.now(); // End time for the entire process
+    const totalTimeTaken = (endTime - startTime) / 1000; // Total time taken in seconds
+    console.log(`All horses scraped. Total time taken: ${totalTimeTaken / 60} minutes`);
 
     await browser.close();
 }

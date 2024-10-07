@@ -293,7 +293,7 @@ export async function horseInfo(page: Page, targetHid: string): Promise<HorseInf
 }
 function findFoalRefFromText(text: string, horse: string): string | undefined {
     try {
-        console.log('text:', text);
+        console.log('foal text:', text);
         if (text === undefined) {
             return undefined;
         }
