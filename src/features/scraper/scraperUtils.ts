@@ -293,26 +293,20 @@ export async function horseInfo(page: Page, targetHid: string): Promise<HorseInf
 }
 function findFoalRefFromText(text: string, horse: string): string | undefined {
     try {
-        console.log('foal text:', text);
         if (text === undefined) {
             return undefined;
         }
-        console.log('horse:', horse);
         // Step 1: Remove newlines and trim extra spaces
         const cleanedText = text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-        console.log('Cleaned text:', cleanedText);
 
         // Step 2: Match the horse's foal ref
         const match = cleanedText.split(horse)[1]?.trim();
-        console.log('Match:', match); // Log the regex match result for debugging
 
         // Step 3: Extract the foal ref from the match
         const match2 = match.split('Foal ref: ')[1]?.trim();
-        console.log('Match2:', match2); // Log the regex match result for debugging
 
         // Step 4: Return the foal ref
         const match3 = match2.split(' ')[0]?.trim();
-        console.log('Match3:', match3); // Log the regex match result for debugging
         return match3; // Return the foal ref
     } catch (
         e // Log any errors

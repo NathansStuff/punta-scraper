@@ -14,7 +14,6 @@ import { Report } from 'src/features/report/reportType';
 import { ELivingStatus } from 'src/types/ELivingStatus';
 
 import { HorseInfo } from './types/HorseInfo';
-import { saveRawHTML } from './utils/utils';
 import { deleteLocalFile, uploadToS3 } from './s3';
 import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUtils';
 
@@ -25,13 +24,9 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
         headless: true,
         defaultViewport: {
             width: 800, // Set your desired width
-            height: 600, // Set your desired height
+            height: 600, // Set the desired height
         },
-        args: [
-            '--window-size=800,600', // Set the window size for the browser
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-        ],
+        args: ['--window-size=800,600', '--no-sandbox', '--disable-setuid-sandbox'],
     });
     const page = await browser.newPage();
     await login(page);
@@ -42,7 +37,7 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
 
     for (let id = startId; id <= endId; id++) {
         const horseStartTime = Date.now(); // Start time for this horse
-        console.log(`Scraping horse with id: ${id}`);
+        console.log('Scraping horse ID:', id);
         const url = `https://www.studbook.org.au/Horse.aspx?hid=${id}`;
 
         // Navigate to the target page
@@ -50,11 +45,9 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
 
         // Generate the filename for the screenshot
         const screenshotPath = generateFilename(url);
-        console.log('Generating screenshot:', screenshotPath);
 
         // Take a screenshot
         await page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log('Screenshot taken:', screenshotPath);
 
         // Upload the screenshot to S3
         const s3Key = `screenshots/${path.basename(screenshotPath)}`; // Define S3 key (path in bucket)
@@ -66,7 +59,6 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
         // Check if the page has a server error
         const hasServerError = await checkForServerError(page);
         if (hasServerError) {
-            console.log(`Server error encountered for horse ID: ${id}. Skipping...`);
             const report: Report = {
                 event: 'Scraper',
                 message: `Server error encountered for horse ID: ${id}. Skipping...`,
@@ -76,15 +68,16 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
             };
             await createReportService(report);
             horsesScraped++;
+            console.log('Server error encountered for horse ID:', id);
 
-            await delay(delayMs); // This adds the delay
-            continue; // Move to the next ID
+            await delay(delayMs);
+            continue;
         }
 
         // Extract pedigree information
         const info = await horseInfo(page, id.toString());
 
-        saveRawHTML(page);
+        // saveRawHTML(page);
 
         // Save the extracted information
         await saveInfo(id, info);
@@ -100,15 +93,25 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
 
         // Use the custom delay before moving to the next page
         console.log(`Waiting for ${delayMs} milliseconds...`);
-        await delay(delayMs); // This adds the delay
+        await delay(delayMs);
 
         const horseEndTime = Date.now(); // End time for this horse
         const timeTaken = (horseEndTime - horseStartTime) / 1000; // Time taken in seconds
         horsesScraped++;
         const percentage = ((horsesScraped / totalHorses) * 100).toFixed(2); // Percentage completed
-        const elapsedTime = (horseEndTime - startTime) / 1000; // Elapsed time in seconds
-        const estimatedTotalTime = (elapsedTime / horsesScraped) * totalHorses; // Estimated total time
-        const estimatedFinishTimeInSeconds = estimatedTotalTime - elapsedTime; // Remaining time in seconds
+        const elapsedTimeInSeconds = (horseEndTime - startTime) / 1000; // Elapsed time in seconds
+        const elapsedHours = Math.floor(elapsedTimeInSeconds / 3600);
+        const elapsedMinutes = Math.floor((elapsedTimeInSeconds % 3600) / 60);
+        const estimatedTotalTime = (elapsedTimeInSeconds / horsesScraped) * totalHorses; // Estimated total time
+        const estimatedFinishTimeInSeconds = estimatedTotalTime - elapsedTimeInSeconds; // Remaining time in seconds
+
+        // Calculate the average time per horse
+        const averageTimePerHorse = elapsedTimeInSeconds / horsesScraped;
+        console.log(`Ongoing average time per horse: ${averageTimePerHorse.toFixed(2)} seconds`);
+
+        // Calculate the estimated remaining time in hours and minutes
+        const remainingHours = Math.floor(estimatedFinishTimeInSeconds / 3600);
+        const remainingMinutes = Math.floor((estimatedFinishTimeInSeconds % 3600) / 60);
 
         // Calculate the estimated end date and time
         const estimatedFinishTimestamp = new Date(horseEndTime + estimatedFinishTimeInSeconds * 1000);
@@ -122,11 +125,9 @@ export async function scraperService(startId: number, endId: number, delayMs: nu
         });
 
         console.log(`Time taken for horse ID ${id}: ${timeTaken} seconds`);
-        console.log(`Overall time elapsed: ${elapsedTime.toFixed(2)} seconds`);
+        console.log(`Overall time elapsed: ${elapsedHours} hours ${elapsedMinutes} minutes`);
         console.log(`Progress: ${percentage}%`);
-        console.log(
-            `Estimated time remaining: ${(estimatedFinishTimeInSeconds / 60 / 60).toFixed(2)} hours ${(estimatedFinishTimeInSeconds / 60).toFixed(2)} minutes`
-        );
+        console.log(`Estimated time remaining: ${remainingHours} hours ${remainingMinutes} minutes`);
         console.log(`Estimated finish time: ${estimatedFinishTimeString}`);
     }
 
