@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import {
@@ -19,122 +20,163 @@ import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUt
 
 const delay = (ms: number): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function scraperService(startId: number, endId: number, delayMs: number = 2000): Promise<void> {
+export async function scraperService(
+    startId: number,
+    endId: number,
+    delayMs: number = 2000,
+    numBrowsers: number = 1
+): Promise<void> {
+    console.log(`Starting scraper with ${numBrowsers} browsers`);
+
+    let currentId = startId;
+    const scraperPromises = Array.from({ length: numBrowsers }, (_, index) =>
+        scrapeRange(
+            endId,
+            delayMs,
+            index,
+            () => currentId++,
+            () => startId,
+            numBrowsers
+        )
+    );
+
+    await Promise.all(scraperPromises);
+
+    console.log('All scraping processes completed');
+}
+
+async function scrapeRange(
+    endId: number,
+    delayMs: number,
+    browserIndex: number,
+    getNextId: () => number,
+    getStartId: () => number,
+    numBrowsers: number
+): Promise<void> {
     const browser = await puppeteer.launch({
-        headless: true,
+        headless: false,
         defaultViewport: {
-            width: 800, // Set your desired width
-            height: 600, // Set the desired height
+            width: 800,
+            height: 600,
         },
-        args: ['--window-size=800,600', '--no-sandbox', '--disable-setuid-sandbox'],
+        args: ['--window-size=800,600'],
     });
     const page = await browser.newPage();
+    await page.setDefaultNavigationTimeout(60000); // Increase navigation timeout to 60 seconds
     await login(page);
 
-    const totalHorses = endId - startId + 1; // Total number of horses to scrape
-    let horsesScraped = 0; // Count of horses scraped so far
-    const startTime = Date.now(); // Start time for the entire process
+    const startTime = Date.now();
+    let horsesScraped = 0;
 
-    for (let id = startId; id <= endId; id++) {
-        const horseStartTime = Date.now(); // Start time for this horse
-        console.log('Scraping horse ID:', id);
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        const id = getNextId();
+        if (id > endId) break;
+
+        horsesScraped++;
+        console.log(`Browser ${browserIndex + 1}: Scraping horse ID:`, id);
         const url = `https://www.studbook.org.au/Horse.aspx?hid=${id}`;
 
-        // Navigate to the target page
-        await page.goto(url);
+        const horseStartTime = Date.now();
 
-        // Generate the filename for the screenshot
+        let retries = 3;
+        let success = false;
+
+        while (retries > 0 && !success) {
+            try {
+                await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+                success = true;
+            } catch (error) {
+                console.error(`Navigation failed for horse ID ${id}. Retrying... (${retries} attempts left)`);
+                retries--;
+                if (retries === 0) {
+                    console.error(`Failed to navigate to horse ID ${id} after 3 attempts. Skipping...`);
+                    const report: Report = {
+                        event: 'Scraper',
+                        message: `Navigation failed for horse ID: ${id}. Skipping...`,
+                        url: url,
+                        outcome: EOutcome.NAVIGATION_ERROR,
+                        studbookId: id,
+                    };
+                    await createReportService(report);
+                    continue;
+                }
+                await delay(5000); // Wait 5 seconds before retrying
+            }
+        }
+
+        if (!success) continue;
+
         const screenshotPath = generateFilename(url);
-
-        // Take a screenshot
         await page.screenshot({ path: screenshotPath, fullPage: true });
-
-        // Upload the screenshot to S3
-        const s3Key = `screenshots/${path.basename(screenshotPath)}`; // Define S3 key (path in bucket)
+        const s3Key = `screenshots/${path.basename(screenshotPath)}`;
         await uploadToS3(screenshotPath, s3Key);
-
-        // Delete the screenshot locally after upload
         deleteLocalFile(screenshotPath);
 
-        // Check if the page has a server error
         const hasServerError = await checkForServerError(page);
         if (hasServerError) {
             const report: Report = {
                 event: 'Scraper',
                 message: `Server error encountered for horse ID: ${id}. Skipping...`,
-                url: `https://www.studbook.org.au/Horse.aspx?hid=${id}`,
+                url: url,
                 outcome: EOutcome.INVALID_ID,
                 studbookId: id,
             };
             await createReportService(report);
-            horsesScraped++;
-            console.log('Server error encountered for horse ID:', id);
-
+            console.log(`Browser ${browserIndex + 1}: Server error encountered for horse ID:`, id);
             await delay(delayMs);
             continue;
         }
 
-        // Extract pedigree information
         const info = await horseInfo(page, id.toString());
-
-        // saveRawHTML(page);
-
-        // Save the extracted information
         await saveInfo(id, info);
 
         const report: Report = {
             event: 'Scraper',
             message: `Successfully scraped horse ID: ${id}`,
-            url: `https://www.studbook.org.au/Horse.aspx?hid=${id}`,
+            url: url,
             outcome: EOutcome.SUCCESS,
             studbookId: id,
         };
         await createReportService(report);
 
-        // Use the custom delay before moving to the next page
-        console.log(`Waiting for ${delayMs} milliseconds...`);
+        const horseEndTime = Date.now();
+        const horseTimeTaken = (horseEndTime - horseStartTime) / 1000; // in seconds
+        const elapsedTime = (horseEndTime - startTime) / 1000; // in seconds
+        const elapsedHours = Math.floor(elapsedTime / 3600);
+        const elapsedMinutes = Math.floor((elapsedTime % 3600) / 60);
+
+        // Calculate progress percentage
+        const totalHorses = endId - getStartId() + 1;
+        const percentage = ((horsesScraped / (totalHorses / numBrowsers)) * 100).toFixed(2);
+
+        // Estimate remaining time, accounting for multiple browsers
+        const averageTimePerHorse = elapsedTime / horsesScraped;
+        const remainingHorses = Math.ceil((totalHorses - (id - getStartId() + 1)) / numBrowsers);
+        const estimatedRemainingTime = averageTimePerHorse * remainingHorses;
+        const remainingHours = Math.floor(estimatedRemainingTime / 3600);
+        const remainingMinutes = Math.floor((estimatedRemainingTime % 3600) / 60);
+
+        // Calculate estimated finish time
+        const estimatedFinishTime = new Date(horseEndTime + estimatedRemainingTime * 1000);
+        const estimatedFinishTimeString = estimatedFinishTime.toLocaleString();
+
+        console.log(
+            chalk.blue(`Browser ${browserIndex + 1}:`) +
+                chalk.green(` Horse ${id}`) +
+                chalk.yellow(` scraped in ${horseTimeTaken.toFixed(2)}s,`) +
+                chalk.magenta(` Total time: ${elapsedHours}h ${elapsedMinutes}m,`) +
+                chalk.cyan(` ETA: ${estimatedFinishTimeString},`) +
+                chalk.red(` Remaining: ${remainingHours}h ${remainingMinutes}m,`) +
+                chalk.white(` Progress: ${percentage}%`)
+        );
+
         await delay(delayMs);
-
-        const horseEndTime = Date.now(); // End time for this horse
-        const timeTaken = (horseEndTime - horseStartTime) / 1000; // Time taken in seconds
-        horsesScraped++;
-        const percentage = ((horsesScraped / totalHorses) * 100).toFixed(2); // Percentage completed
-        const elapsedTimeInSeconds = (horseEndTime - startTime) / 1000; // Elapsed time in seconds
-        const elapsedHours = Math.floor(elapsedTimeInSeconds / 3600);
-        const elapsedMinutes = Math.floor((elapsedTimeInSeconds % 3600) / 60);
-        const estimatedTotalTime = (elapsedTimeInSeconds / horsesScraped) * totalHorses; // Estimated total time
-        const estimatedFinishTimeInSeconds = estimatedTotalTime - elapsedTimeInSeconds; // Remaining time in seconds
-
-        // Calculate the average time per horse
-        const averageTimePerHorse = elapsedTimeInSeconds / horsesScraped;
-        console.log(`Ongoing average time per horse: ${averageTimePerHorse.toFixed(2)} seconds`);
-
-        // Calculate the estimated remaining time in hours and minutes
-        const remainingHours = Math.floor(estimatedFinishTimeInSeconds / 3600);
-        const remainingMinutes = Math.floor((estimatedFinishTimeInSeconds % 3600) / 60);
-
-        // Calculate the estimated end date and time
-        const estimatedFinishTimestamp = new Date(horseEndTime + estimatedFinishTimeInSeconds * 1000);
-        const estimatedFinishTimeString = estimatedFinishTimestamp.toLocaleString('en-US', {
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-        });
-
-        console.log(`Time taken for horse ID ${id}: ${timeTaken} seconds`);
-        console.log(`Overall time elapsed: ${elapsedHours} hours ${elapsedMinutes} minutes`);
-        console.log(`Progress: ${percentage}%`);
-        console.log(`Estimated time remaining: ${remainingHours} hours ${remainingMinutes} minutes`);
-        console.log(`Estimated finish time: ${estimatedFinishTimeString}`);
     }
 
-    // Final log after all horses have been scraped
-    const endTime = Date.now(); // End time for the entire process
-    const totalTimeTaken = (endTime - startTime) / 1000; // Total time taken in seconds
-    console.log(`All horses scraped. Total time taken: ${totalTimeTaken / 60} minutes`);
+    const endTime = Date.now();
+    const totalTimeTaken = (endTime - startTime) / 1000;
+    console.log(`Browser ${browserIndex + 1}: All horses scraped. Total time taken: ${totalTimeTaken / 60} minutes`);
 
     await browser.close();
 }
