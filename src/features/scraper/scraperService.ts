@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import path from 'path';
 import puppeteer from 'puppeteer';
 import {
@@ -17,6 +16,24 @@ import { ELivingStatus } from 'src/types/ELivingStatus';
 import { HorseInfo } from './types/HorseInfo';
 import { deleteLocalFile, uploadToS3 } from './s3';
 import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUtils';
+
+// At the top of the file, add this type declaration
+type BrowserProgress = Array<{
+    browser: number;
+    currentId: number;
+    endId: number;
+    lastHorseTime: string;
+    avgTimePerHorse: string;
+    elapsedTime: string;
+    remainingTime: string;
+    estimatedFinish: string;
+    progress: string;
+}>;
+
+// Declare the global variable
+declare global {
+    var browserProgress: BrowserProgress;
+}
 
 const delay = (ms: number): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -54,12 +71,12 @@ async function scrapeRange(
     numBrowsers: number
 ): Promise<void> {
     const browser = await puppeteer.launch({
-        headless: false,
+        headless: true,
         defaultViewport: {
             width: 800,
             height: 600,
         },
-        args: ['--window-size=800,600'],
+        args: ['--window-size=800,600', '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
     const page = await browser.newPage();
     await page.setDefaultNavigationTimeout(60000); // Increase navigation timeout to 60 seconds
@@ -161,14 +178,17 @@ async function scrapeRange(
         const estimatedFinishTime = new Date(horseEndTime + estimatedRemainingTime * 1000);
         const estimatedFinishTimeString = estimatedFinishTime.toLocaleString();
 
-        console.log(
-            chalk.blue(`Browser ${browserIndex + 1}:`) +
-                chalk.green(` Horse ${id}`) +
-                chalk.yellow(` scraped in ${horseTimeTaken.toFixed(2)}s,`) +
-                chalk.magenta(` Total time: ${elapsedHours}h ${elapsedMinutes}m,`) +
-                chalk.cyan(` ETA: ${estimatedFinishTimeString},`) +
-                chalk.red(` Remaining: ${remainingHours}h ${remainingMinutes}m,`) +
-                chalk.white(` Progress: ${percentage}%`)
+        updateAndPrintProgress(
+            browserIndex,
+            id,
+            endId,
+            horseTimeTaken,
+            averageTimePerHorse,
+            elapsedTime,
+            estimatedRemainingTime,
+            estimatedFinishTime,
+            percentage,
+            numBrowsers
         );
 
         await delay(delayMs);
@@ -264,4 +284,63 @@ async function saveInfo(id: number, info: HorseInfo): Promise<void> {
 
     await updateHorseService(existingHorse._id.toString(), existingHorse);
     console.log('Updated Horse: ', id);
+}
+
+function updateAndPrintProgress(
+    browserIndex: number,
+    currentId: number,
+    endId: number,
+    horseTimeTaken: number,
+    averageTimePerHorse: number,
+    elapsedTime: number,
+    estimatedRemainingTime: number,
+    estimatedFinishTime: Date,
+    percentage: string,
+    numBrowsers: number
+): void {
+    const elapsedHours = Math.floor(elapsedTime / 3600);
+    const elapsedMinutes = Math.floor((elapsedTime % 3600) / 60);
+    const remainingHours = Math.floor(estimatedRemainingTime / 3600);
+    const remainingMinutes = Math.floor((estimatedRemainingTime % 3600) / 60);
+
+    if (!global.browserProgress) {
+        global.browserProgress = new Array(numBrowsers).fill(null).map((_, index) => ({
+            browser: index + 1,
+            currentId: 0,
+            endId: endId,
+            lastHorseTime: '0s',
+            avgTimePerHorse: '0s',
+            elapsedTime: '0h 0m',
+            remainingTime: 'N/A',
+            estimatedFinish: 'N/A',
+            progress: '0%',
+        }));
+    }
+
+    global.browserProgress[browserIndex] = {
+        browser: browserIndex + 1,
+        currentId: currentId,
+        endId: endId,
+        lastHorseTime: horseTimeTaken.toFixed(2) + 's',
+        avgTimePerHorse: averageTimePerHorse.toFixed(2) + 's',
+        elapsedTime: `${elapsedHours}h ${elapsedMinutes}m`,
+        remainingTime: `${remainingHours}h ${remainingMinutes}m`,
+        estimatedFinish: estimatedFinishTime.toLocaleString(),
+        progress: percentage + '%',
+    };
+
+    // Clear console and print the table
+    console.clear();
+    console.table(global.browserProgress);
+
+    // Print overall progress
+    const totalProgress =
+        global.browserProgress.reduce((sum, browser) => sum + parseFloat(browser.progress), 0) / numBrowsers;
+    const overallEstimatedFinish = global.browserProgress.reduce((latest, browser) => {
+        const current = new Date(browser.estimatedFinish);
+        return isNaN(current.getTime()) ? latest : current > latest ? current : latest;
+    }, new Date(0));
+
+    console.log(`\nOverall Progress: ${totalProgress.toFixed(2)}%`);
+    console.log(`Estimated Overall Finish: ${overallEstimatedFinish.toLocaleString()}`);
 }
