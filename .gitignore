@@ -6,3 +6,4 @@ coverage/
 .build/
 .serverless/
 .env
+.aws-sam/

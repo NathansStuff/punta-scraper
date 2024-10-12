@@ -1,14 +1,28 @@
-import { APIGatewayProxyEvent, Context } from 'aws-lambda';
-import awsServerlessExpress from 'aws-serverless-express';
-import { IncomingMessage, Server, ServerResponse } from 'http';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
-import app from './src/core/app';
+import { scraperService } from './src/features/scraper/scraperService';
 
-const server: Server = awsServerlessExpress.createServer(app);
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const { startId, endId, delayMs, numBrowsers } = JSON.parse(event.body || '{}');
 
-exports.handler = (
-    event: APIGatewayProxyEvent,
-    context: Context
-): Server<typeof IncomingMessage, typeof ServerResponse> => {
-    return awsServerlessExpress.proxy(server, event, context);
+    if (!startId || !endId) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'startId and endId are required' }),
+        };
+    }
+
+    try {
+        await scraperService(startId, endId, delayMs, numBrowsers);
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ message: 'Scraping completed successfully' }),
+        };
+    } catch (error) {
+        console.error('Error in scraper:', error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'An error occurred during scraping' }),
+        };
+    }
 };

@@ -1,0 +1,6 @@
+{
+    "startId": 1,
+    "endId": 2,
+    "delayMs": 1000,
+    "numBrowsers": 1
+}
