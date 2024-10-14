@@ -15,7 +15,7 @@ import { ELivingStatus } from 'src/types/ELivingStatus';
 
 import { HorseInfo } from './types/HorseInfo';
 import { deleteLocalFile, uploadToS3 } from './s3';
-import { checkForServerError, horseInfo, login, sanitizeDate } from './scraperUtils';
+import { checkForServerError, checkLoginAndRelogin, horseInfo, login, sanitizeDate } from './scraperUtils';
 
 // At the top of the file, add this type declaration
 type BrowserProgress = Array<{
@@ -70,6 +70,8 @@ async function scrapeRange(
     getStartId: () => number,
     numBrowsers: number
 ): Promise<void> {
+    let reloginAttempted = false;
+
     const browser = await puppeteer.launch({
         headless: true,
         defaultViewport: {
@@ -122,7 +124,10 @@ async function scrapeRange(
             }
         }
 
-        if (!success) continue;
+        if (!success) {
+            console.error(`Browser ${browserIndex + 1}: Failed to navigate. Stopping the scraping process.`);
+            break;
+        }
 
         const screenshotPath = generateFilename(url);
         await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -145,7 +150,19 @@ async function scrapeRange(
             continue;
         }
 
-        const info = await horseInfo(page, id.toString());
+        let info = await horseInfo(page, id.toString());
+
+        if (!info.pedigreeTree || info.pedigreeTree.length === 0) {
+            if (!reloginAttempted) {
+                const reloginNeeded = await checkLoginAndRelogin(page);
+                if (reloginNeeded) {
+                    reloginAttempted = true;
+                    await page.goto(`https://www.studbook.org.au/Horse/HorseDetails.aspx?hid=${id}`);
+                    info = await horseInfo(page, id.toString());
+                }
+            }
+        }
+
         await saveInfo(id, info);
 
         const report: Report = {

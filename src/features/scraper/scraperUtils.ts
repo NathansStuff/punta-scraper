@@ -454,3 +454,22 @@ export async function checkForServerError(page: Page): Promise<boolean> {
 
     return isError || false;
 }
+
+export async function checkLoginAndRelogin(page: Page): Promise<boolean> {
+    const isServerError = await checkForServerError(page);
+    if (isServerError) {
+        return false;
+    }
+
+    const hasPedigreeItems = await page.evaluate(() => {
+        return document.querySelectorAll('a.PedigreeItem').length > 0;
+    });
+
+    if (!hasPedigreeItems) {
+        console.log('Login might have expired. Attempting to re-login...');
+        await login(page);
+        return true;
+    }
+
+    return false;
+}
