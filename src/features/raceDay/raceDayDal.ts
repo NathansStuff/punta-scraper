@@ -1,7 +1,7 @@
 import { connectMongo } from 'src/middleware/mongoDbConnect';
 
-import { RaceDayModel } from './raceDayModel';
 import { RaceDay, RaceDayPartial, RaceDayWithId } from './types/RaceDay';
+import { RaceDayModel } from './raceDayModel';
 
 // Create a RaceDay
 export async function createRaceDay(raceDay: RaceDay): Promise<RaceDayWithId> {
@@ -20,7 +20,7 @@ export async function getRaceDayById(id: string): Promise<RaceDayWithId> {
 // Get all RaceDays
 export async function getAllRaceDays(): Promise<RaceDayWithId[]> {
     await connectMongo();
-    const result = await RaceDayModel.find({}).populate('locationId');
+    const result = await RaceDayModel.find();
     return result;
 }
 
@@ -40,7 +40,7 @@ export async function deleteRaceDayById(id: string): Promise<void> {
 // Get RaceDays by Location ID
 export async function getRaceDaysByLocationId(locationId: string): Promise<RaceDayWithId[]> {
     await connectMongo();
-    const result = await RaceDayModel.find({ locationId }).populate('locationId');
+    const result = await RaceDayModel.find({ locationId });
     return result;
 }
 
@@ -53,7 +53,7 @@ export async function getRaceDayByLocationAndDate(locationId: string, date: Date
             $gte: new Date(date.setHours(0, 0, 0, 0)),
             $lt: new Date(date.setHours(23, 59, 59, 999)),
         },
-    }).populate('locationId');
+    });
     return result;
 }
 
@@ -65,6 +65,6 @@ export async function getRaceDaysByDateRange(startDate: Date, endDate: Date): Pr
             $gte: startDate,
             $lte: endDate,
         },
-    }).populate('locationId');
+    });
     return result;
 }

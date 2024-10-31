@@ -3,6 +3,7 @@ import { AuthenticationError } from 'src/exceptions/AuthenticationError';
 import { EActionAccess } from 'src/types/EActionAccess';
 
 export async function protect(req: Request, res: Response, action: EActionAccess): Promise<void> {
+    console.log(`Protecting action: ${action}`);
     // Expect {headers: {x-api-key: "your_api_key"}}
     const apiKey = req.headers['x-api-key'];
     res.locals.apiKey = apiKey;

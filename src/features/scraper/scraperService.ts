@@ -32,6 +32,7 @@ type BrowserProgress = Array<{
 
 // Declare the global variable
 declare global {
+    // eslint-disable-next-line no-var
     var browserProgress: BrowserProgress;
 }
 
@@ -177,8 +178,6 @@ async function scrapeRange(
         const horseEndTime = Date.now();
         const horseTimeTaken = (horseEndTime - horseStartTime) / 1000; // in seconds
         const elapsedTime = (horseEndTime - startTime) / 1000; // in seconds
-        const elapsedHours = Math.floor(elapsedTime / 3600);
-        const elapsedMinutes = Math.floor((elapsedTime % 3600) / 60);
 
         // Calculate progress percentage
         const totalHorses = endId - getStartId() + 1;
@@ -188,12 +187,9 @@ async function scrapeRange(
         const averageTimePerHorse = elapsedTime / horsesScraped;
         const remainingHorses = Math.ceil((totalHorses - (id - getStartId() + 1)) / numBrowsers);
         const estimatedRemainingTime = averageTimePerHorse * remainingHorses;
-        const remainingHours = Math.floor(estimatedRemainingTime / 3600);
-        const remainingMinutes = Math.floor((estimatedRemainingTime % 3600) / 60);
 
         // Calculate estimated finish time
         const estimatedFinishTime = new Date(horseEndTime + estimatedRemainingTime * 1000);
-        const estimatedFinishTimeString = estimatedFinishTime.toLocaleString();
 
         updateAndPrintProgress(
             browserIndex,
