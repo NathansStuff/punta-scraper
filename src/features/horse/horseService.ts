@@ -48,6 +48,8 @@ function getFormattedDate(): string {
 }
 
 export function generateFilename(url: string): string {
-    const hid = url.split('?hid=').pop();
-    return `${hid}_${getFormattedDate()}.png`;
+    const hid = url.split('?hid=').pop() ?? '';
+    // remove / in url
+    const cleanUrl = hid.replace(/\//g, '');
+    return `${cleanUrl}_${getFormattedDate()}.png`;
 }
