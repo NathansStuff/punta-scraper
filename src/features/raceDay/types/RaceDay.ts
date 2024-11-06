@@ -4,6 +4,7 @@ import { z } from 'zod';
 export const RaceDay = z.object({
     locationId: z.string(),
     date: z.date(),
+    urlExtension: z.string(),
 });
 
 export const RaceDayPartial = RaceDay.partial();

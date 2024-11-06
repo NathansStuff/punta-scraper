@@ -6,6 +6,7 @@ export const RaceDaySchema = new Schema<RaceDay>(
     {
         locationId: { type: String, required: true, ref: 'Location' },
         date: { type: Date, required: true },
+        urlExtension: { type: String, required: true },
     },
     { timestamps: true }
 );

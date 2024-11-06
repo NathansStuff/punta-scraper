@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 
-import { scrapeRacingAus } from './racingaustralia/racingausService';
+import { scrapeRacingAusHome, scrapeRacingAusRaceDay } from './racingaustralia/racingausService';
 import { scraperService } from './scraperService';
 
 export async function startScraperHandler(req: Request, res: Response): Promise<void> {
@@ -17,7 +17,17 @@ export async function startScraperHandler(req: Request, res: Response): Promise<
 
 export async function startRacingAusScraperHandler(req: Request, res: Response): Promise<void> {
     try {
-        await scrapeRacingAus();
+        await scrapeRacingAusHome();
+        res.status(200).json({ message: 'Scraping completed successfully' });
+    } catch (error) {
+        console.error('Error in scraper:', error);
+        res.status(500).json({ error: 'An error occurred during scraping' });
+    }
+}
+
+export async function startRacingAusRaceDayScraperHandler(req: Request, res: Response): Promise<void> {
+    try {
+        await scrapeRacingAusRaceDay(req.body.urlExtension);
         res.status(200).json({ message: 'Scraping completed successfully' });
     } catch (error) {
         console.error('Error in scraper:', error);

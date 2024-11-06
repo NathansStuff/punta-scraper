@@ -49,10 +49,7 @@ export async function getRaceDayByLocationAndDate(locationId: string, date: Date
     await connectMongo();
     const result = await RaceDayModel.findOne({
         locationId,
-        date: {
-            $gte: new Date(date.setHours(0, 0, 0, 0)),
-            $lt: new Date(date.setHours(23, 59, 59, 999)),
-        },
+        date,
     });
     return result;
 }
