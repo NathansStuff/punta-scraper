@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import fs from 'fs';
 import path from 'path';
@@ -6,6 +7,8 @@ import { generateFilename } from 'src/features/horse/horseService';
 import { EState } from 'src/features/location/types/EState';
 import { getBrowser } from 'src/lib/puppeteer';
 
+import { createLocationService,getLocationByNameAndStateService } from '../../location/locationService';
+import { Location } from '../../location/types/Location';
 import { deleteLocalFile, uploadToS3 } from '../s3';
 
 export async function scrapeRacingAus(): Promise<void> {
@@ -36,16 +39,9 @@ export async function scrapeRacingAus(): Promise<void> {
 }
 
 async function getRaceDays(page: Page): Promise<any> {
-    // Define state columns mapping outside browser context
     const stateColumns = [
-        EState.NSW,  // Column 1
-        EState.VIC,  // Column 2
-        EState.QLD,  // Column 3
-        EState.WA,   // Column 4
-        EState.SA,   // Column 5
-        EState.TAS,  // Column 6
-        EState.NT,   // Column 7
-        EState.ACT   // Column 8
+        EState.NSW, EState.VIC, EState.QLD, EState.WA,
+        EState.SA, EState.TAS, EState.NT, EState.ACT
     ];
 
     const raceDays = await page.evaluate((states) => {
@@ -77,13 +73,11 @@ async function getRaceDays(page: Page): Promise<any> {
         });
     }, stateColumns);
 
-    // Format the dates
-    const formattedRaceDays = raceDays?.map(day => {
-        // Extract date components from strings like "FRIDAY 01 NOV"
+    // Process race days and handle locations
+    const formattedRaceDays = await Promise.all(raceDays?.map(async (day) => {
         const [dayName, dayNum, month] = day.rawDate?.split(' ') ?? [];
         const year = new Date().getFullYear();
 
-        // Convert month abbreviation to month number (0-11)
         const months = {
             'JAN': 0, 'FEB': 1, 'MAR': 2, 'APR': 3, 'MAY': 4, 'JUN': 5,
             'JUL': 6, 'AUG': 7, 'SEP': 8, 'OCT': 9, 'NOV': 10, 'DEC': 11
@@ -91,11 +85,35 @@ async function getRaceDays(page: Page): Promise<any> {
 
         const date = new Date(year, months[month as keyof typeof months], parseInt(dayNum));
 
+        // Process each meeting to include location ID
+        const processedMeetings = await Promise.all(
+            day.meetings.map(async (stateGroup) => {
+                return Promise.all(stateGroup.map(async (meeting) => {
+                    // Check if location exists
+                    let location = await getLocationByNameAndStateService(meeting.venue!, meeting.state!);
+
+                    // If location doesn't exist, create it
+                    if (!location) {
+                        const newLocation: Location = {
+                            name: meeting.venue ?? '',
+                            state: meeting.state as EState
+                        };
+                        location = await createLocationService(newLocation);
+                    }
+
+                    return {
+                        ...meeting,
+                        locationId: location._id.toString()
+                    };
+                }));
+            })
+        );
+
         return {
             date,
-            meetings: day.meetings
+            meetings: processedMeetings
         };
-    });
+    }) ?? []);
 
     // Log the first meeting of each day
     formattedRaceDays?.forEach(day => {
